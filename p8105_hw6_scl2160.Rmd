@@ -1,0 +1,159 @@
+---
+title: "p8105_hw6_scl2160"
+author: "Sam Loewen"
+date: "11/18/2019"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(modelr)
+library(mgcv)
+library(purrr)
+```
+
+```{r}
+bw = read.csv("./data/birthweight.csv") %>% 
+  janitor::clean_names() %>% 
+  mutate(babysex = as.factor(babysex),
+         frace = as.factor(frace),
+         malform = as.factor(malform),
+         mrace = as.factor(mrace),
+         menarche = ifelse(menarche == 0, "", menarche),
+         fincome = as.numeric(ifelse(fincome == 0, "", fincome)),
+         wtgain = as.numeric(ifelse(wtgain < 0, "", wtgain)),
+         menarche = as.numeric(menarche))
+
+head (bw)
+```
+
+
+Propose a regression model for birthweight. This model may be based on a hypothesized structure for the factors that underly birthweight, on a data-driven model-building process, or a combination of the two. Describe your modeling process and show a plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot.
+
+Compare your model to two others:
+
+## three models
+
+```{r}
+model_1 = lm(bwt ~ frace + mrace + fincome, data = bw)
+
+model_2 = lm(bwt ~ blength + gaweeks, data = bw)
+
+model_3 = lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + blength*babysex + bhead*blength*babysex, data = bw)
+```
+
+## plotting model one
+
+```{r}
+plot(model_1)
+
+bw %>% 
+  add_predictions(model_1) %>% 
+  add_residuals(model_1) %>% 
+  ggplot(aes(x = fincome, y = bwt)) +
+  geom_point()+
+ geom_line(aes(y = pred), color = "orange")
+```
+
+## testing model fits
+
+```{r}
+rmse(model_1, bw)
+rmse(model_2, bw)
+rmse(model_3, bw)
+```
+
+```{r}
+cv_df = 
+  crossv_mc(bw, 100) 
+
+cv_df = 
+  cv_df %>% 
+  mutate(model_1 = map(train, ~lm(bwt ~ fincome + mrace + frace, data = bw)), 
+         model_2 = map(train, ~lm(bwt ~ blength + gaweeks, data = bw)),
+         model_3 = map(train, ~lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + blength*babysex + bhead*blength*babysex, data = bw))) %>% 
+  mutate(rmse_1 = map2_dbl(model_1, test, ~rmse(mode = .x, data = .y)),
+         rmse_2 = map2_dbl(model_2, test, ~rmse(mode = .x, data = .y)),
+         rmse_3 = map2_dbl(model_3, test, ~rmse(mode = .x, data = .y)))
+
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+
+```
+
+Make this comparison in terms of the cross-validated prediction error; use crossv_mc and functions in purrr as appropriate.
+
+Note that although we expect your model to be reasonable, model building itself is not a main idea of the course and we don’t necessarily expect your model to be “optimal”.
+
+
+# Problem 2
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+The boostrap is helpful when you’d like to perform inference for a parameter / value / summary that doesn’t have an easy-to-write-down distribution in the usual repeated sampling framework. We’ll focus on a simple linear regression with tmax as the response and tmin as the predictor, and are interested in the distribution of two quantities estimated from these data:
+
+r^2
+log(β^0∗β^1)
+
+```{r}
+boot_sample = function(df) {
+  sample_frac(df, replace = TRUE)
+}
+
+boot_sample(weather_df)
+
+boot_sample(weather_df) %>% 
+  ggplot(aes(x = tmin, y = tmax)) + 
+  geom_point(alpha = .5) +
+  stat_smooth(method = "lm")
+
+boot_straps = 
+  data_frame(
+    strap_number = 1:5000,
+    strap_sample = rerun(5000, boot_sample(weather_df))
+  )
+
+bootstrap_results = 
+  boot_straps %>% 
+  mutate(
+    models = map(strap_sample, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::tidy)) %>% 
+  select(-strap_sample, -models) %>% 
+  unnest() %>% 
+  group_by(term) %>% 
+  summarize(boot_se = sd(estimate))
+
+bootstrap_results %>% 
+  knitr::kable(digits = 3)
+```
+
+Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, andw describe these in words. Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r^2 and log(β^0∗β^1). Note: broom::glance() is helpful for extracting r^2 from a fitted regression, and broom::tidy() (with some additional wrangling) should help in computing log(β^0∗β^1).
+
+
+
+
+
+
+
+
+
+
