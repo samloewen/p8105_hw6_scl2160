@@ -118,12 +118,39 @@ lm(tmax ~ tmin, data = weather_df) %>%
 
 bootstrapping:
 
-```{r}
-boot_straps = 
-   weather_df %>% 
-  modelr::bootstrap(n = 5000)
+Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, and describe these in words.
 
-coef_log = 
+Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r^2 and log(β^0∗β^1).
+
+distribution of log(β^0∗β^1:
+
+```{r}
+weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x)),
+    result = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(result) %>% 
+  ggplot(aes(x = estimate)) + geom_density()
+```
+
+distribution of r^2:
+
+```{r}
+weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x)),
+    result = map(models, broom::glance)) %>% 
+  select(-strap, -models) %>% 
+  unnest(result) %>% 
+  ggplot(aes(x = r.squared)) + geom_density()
+```
+
+confidence interval of log(β^0∗β^1:
+
+```{r}
 weather_df %>% 
   modelr::bootstrap(n = 5000) %>% 
   mutate(
@@ -134,8 +161,11 @@ weather_df %>%
   group_by(.id) %>% 
   summarize(log_coef = sum(log(estimate))) %>% 
   summarize(low_int = quantile(log_coef, 0.025), up_int = quantile(log_coef, .975))
+```
 
-r_sq =
+confidence interval of r^2:
+
+```{r}
 weather_df %>% 
   modelr::bootstrap(n = 5000) %>% 
   mutate(
@@ -145,5 +175,6 @@ weather_df %>%
   unnest(result) %>% 
   summarize(low_int = quantile(r.squared, 0.025), up_int = quantile(r.squared, .975))
 ```
+
 
 
