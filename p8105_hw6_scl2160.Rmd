@@ -29,9 +29,9 @@ bw = read.csv("./data/birthweight.csv") %>%
          menarche = as.numeric(menarche))
 ```
 
-I wanted to see the effect of income and race on birthweight, in the the absense of medical/health/physical indicators. For that reason I chose income, father's race, and mother's race.
-
 ## Plotting model one
+
+I wanted to see the effect of income and race on birthweight, in the the absense of medical/health/physical indicators. For that reason I chose income, father's race, and mother's race.
 
 ```{r}
 model_1 = lm(bwt ~ frace + mrace + fincome + frace*fincome + mrace*fincome, data = bw)
@@ -87,7 +87,10 @@ cv_df %>%
     values_to = "rmse",
     names_prefix = "rmse_") %>% 
   mutate(model = fct_inorder(model)) %>% 
-  ggplot(aes(x = model, y = rmse)) + geom_boxplot()
+  ggplot(aes(x = model, y = rmse)) + geom_boxplot() +
+  labs(
+    title = "Cross validation comparison of models"
+  )
 
 ```
 
@@ -109,20 +112,14 @@ weather_df =
   select(name, id, everything())
 ```
 
-model:
+Model:
 
 ```{r}
 lm(tmax ~ tmin, data = weather_df) %>% 
   broom::tidy()
 ```
 
-bootstrapping:
-
-Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, and describe these in words.
-
-Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r^2 and log(β^0∗β^1).
-
-distribution of log(β^0∗β^1:
+Distribution of log(β^0 ∗ β^1):
 
 ```{r}
 weather_df %>% 
@@ -132,10 +129,19 @@ weather_df %>%
     result = map(models, broom::tidy)) %>% 
   select(-strap, -models) %>% 
   unnest(result) %>% 
-  ggplot(aes(x = estimate)) + geom_density()
+  group_by(.id) %>% 
+  summarize(log_coef = sum(log(estimate))) %>% 
+  ggplot(aes(x = log_coef)) + geom_density() +
+  labs(
+    title = "Distribution of log(β^0 ∗ β^1)",
+    x = "log(β^0 ∗ β^1)",
+    y = "desnsity"
+  )
 ```
 
-distribution of r^2:
+The estimates of log(β^0 ∗ β^1) appear normally distributed. 
+
+Distribution of r^2:
 
 ```{r}
 weather_df %>% 
@@ -145,10 +151,14 @@ weather_df %>%
     result = map(models, broom::glance)) %>% 
   select(-strap, -models) %>% 
   unnest(result) %>% 
-  ggplot(aes(x = r.squared)) + geom_density()
+  ggplot(aes(x = r.squared)) + geom_density() +
+  labs(title = "Distribution of r^2")
+
 ```
 
-confidence interval of log(β^0∗β^1:
+The r^2 estimates are fairly normally distributed, but slightly left skewed.
+
+Confidence interval of log(β^0 ∗ β^1):
 
 ```{r}
 weather_df %>% 
@@ -163,7 +173,7 @@ weather_df %>%
   summarize(low_int = quantile(log_coef, 0.025), up_int = quantile(log_coef, .975))
 ```
 
-confidence interval of r^2:
+Confidence interval of r^2:
 
 ```{r}
 weather_df %>% 
