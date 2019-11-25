@@ -12,6 +12,10 @@ library(mgcv)
 library(purrr)
 ```
 
+# Problem 1
+
+Cleaning data:
+
 ```{r}
 bw = read.csv("./data/birthweight.csv") %>% 
   janitor::clean_names() %>% 
@@ -23,39 +27,38 @@ bw = read.csv("./data/birthweight.csv") %>%
          fincome = as.numeric(ifelse(fincome == 0, "", fincome)),
          wtgain = as.numeric(ifelse(wtgain < 0, "", wtgain)),
          menarche = as.numeric(menarche))
-
-head (bw)
 ```
 
+I wanted to see the effect of income and race on birthweight, in the the absense of medical/health/physical indicators. For that reason I chose income, father's race, and mother's race.
 
-Propose a regression model for birthweight. This model may be based on a hypothesized structure for the factors that underly birthweight, on a data-driven model-building process, or a combination of the two. Describe your modeling process and show a plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot.
-
-Compare your model to two others:
-
-## three models
+## Plotting model one
 
 ```{r}
-model_1 = lm(bwt ~ frace + mrace + fincome, data = bw)
+model_1 = lm(bwt ~ frace + mrace + fincome + frace*fincome + mrace*fincome, data = bw)
 
+bw %>% 
+  add_predictions(model_1) %>% 
+  add_residuals(model_1) %>% 
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point()+
+ geom_line(aes(y = pred), color = "orange") +
+    labs(
+    title = "Predicted birthweight vs residuals",
+    x = "predicted birthweight",
+    y = "residuals"
+  )
+```
+
+models 2 and 3:
+
+```{r}
 model_2 = lm(bwt ~ blength + gaweeks, data = bw)
 
 model_3 = lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + blength*babysex + bhead*blength*babysex, data = bw)
 ```
 
-## plotting model one
 
-```{r}
-plot(model_1)
-
-bw %>% 
-  add_predictions(model_1) %>% 
-  add_residuals(model_1) %>% 
-  ggplot(aes(x = fincome, y = bwt)) +
-  geom_point()+
- geom_line(aes(y = pred), color = "orange")
-```
-
-## testing model fits
+## Testing model fits
 
 ```{r}
 rmse(model_1, bw)
@@ -84,14 +87,11 @@ cv_df %>%
     values_to = "rmse",
     names_prefix = "rmse_") %>% 
   mutate(model = fct_inorder(model)) %>% 
-  ggplot(aes(x = model, y = rmse)) + geom_violin()
+  ggplot(aes(x = model, y = rmse)) + geom_boxplot()
 
 ```
 
-Make this comparison in terms of the cross-validated prediction error; use crossv_mc and functions in purrr as appropriate.
-
-Note that although we expect your model to be reasonable, model building itself is not a main idea of the course and we don’t necessarily expect your model to be “optimal”.
-
+Model 3 is the best!
 
 # Problem 2
 
@@ -109,51 +109,41 @@ weather_df =
   select(name, id, everything())
 ```
 
-The boostrap is helpful when you’d like to perform inference for a parameter / value / summary that doesn’t have an easy-to-write-down distribution in the usual repeated sampling framework. We’ll focus on a simple linear regression with tmax as the response and tmin as the predictor, and are interested in the distribution of two quantities estimated from these data:
-
-r^2
-log(β^0∗β^1)
+model:
 
 ```{r}
-boot_sample = function(df) {
-  sample_frac(df, replace = TRUE)
-}
-
-boot_sample(weather_df)
-
-boot_sample(weather_df) %>% 
-  ggplot(aes(x = tmin, y = tmax)) + 
-  geom_point(alpha = .5) +
-  stat_smooth(method = "lm")
-
-boot_straps = 
-  data_frame(
-    strap_number = 1:5000,
-    strap_sample = rerun(5000, boot_sample(weather_df))
-  )
-
-bootstrap_results = 
-  boot_straps %>% 
-  mutate(
-    models = map(strap_sample, ~lm(tmax ~ tmin, data = .x) ),
-    results = map(models, broom::tidy)) %>% 
-  select(-strap_sample, -models) %>% 
-  unnest() %>% 
-  group_by(term) %>% 
-  summarize(boot_se = sd(estimate))
-
-bootstrap_results %>% 
-  knitr::kable(digits = 3)
+lm(tmax ~ tmin, data = weather_df) %>% 
+  broom::tidy()
 ```
 
-Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, andw describe these in words. Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r^2 and log(β^0∗β^1). Note: broom::glance() is helpful for extracting r^2 from a fitted regression, and broom::tidy() (with some additional wrangling) should help in computing log(β^0∗β^1).
+bootstrapping:
 
+```{r}
+boot_straps = 
+   weather_df %>% 
+  modelr::bootstrap(n = 5000)
 
+coef_log = 
+weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x)),
+    result = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(result) %>% 
+  group_by(.id) %>% 
+  summarize(log_coef = sum(log(estimate))) %>% 
+  summarize(low_int = quantile(log_coef, 0.025), up_int = quantile(log_coef, .975))
 
-
-
-
-
-
+r_sq =
+weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x)),
+    result = map(models, broom::glance)) %>% 
+  select(-strap, -models) %>% 
+  unnest(result) %>% 
+  summarize(low_int = quantile(r.squared, 0.025), up_int = quantile(r.squared, .975))
+```
 
 
